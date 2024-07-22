@@ -2,13 +2,17 @@ from flask import Flask, render_template, request, redirect, url_for, session
 from flask_bcrypt import Bcrypt
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+import os
 
 app = Flask(__name__)
 app.secret_key = '551df092154b9436918adc27021fd868'
 bcrypt = Bcrypt(app)
 
 # Database configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://blog_user:password@localhost/Blog'
+app.config['SQLALCHEMY_DATABASE_URI'] = (
+    f"mysql+pymysql://{os.getenv('DATABASE_USER')}:{os.getenv('DATABASE_PASSWORD')}@"
+    f"{os.getenv('DATABASE_HOST')}/{os.getenv('DATABASE_NAME')}"
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -26,6 +30,14 @@ class Post(db.Model):
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     author = db.relationship('User', backref=db.backref('posts', lazy=True))
 
+# Create a before_request function to check if tables are created
+@app.before_request
+def before_request():
+    try:
+        db.create_all()
+    except Exception as e:
+        app.logger.error(f"Error creating tables: {e}")
+
 # Routes
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -39,13 +51,12 @@ def index():
         else:
             return render_template('index.html', error='Invalid username or password')
     else:
-        # For GET request, render view.html directly
         posts = Post.query.all()
         return render_template('view.html', posts=posts)
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        # Handle login form submission
         username = request.form['username']
         password = request.form['password']
         user = User.query.filter_by(username=username).first()
@@ -80,6 +91,7 @@ def create():
         return render_template('create.html')
     else:
         return redirect(url_for('index'))
+
 @app.route('/logout')
 def logout():
     session.pop('user_id', None)
@@ -87,4 +99,3 @@ def logout():
 
 if __name__ == '__main__':
     app.run(debug=True)
-
